@@ -8,14 +8,17 @@ app_mode = st.sidebar.selectbox('Select Page',['Journal Bearing'])
 st.sidebar.markdown("![Alt Text](https://upload.wikimedia.org/wikipedia/commons/thumb/b/ba/Hydrodynamic_lubrication_attitude_angle.svg/330px-Hydrodynamic_lubrication_attitude_angle.svg.png)")
 st.sidebar.markdown("Image sorce: Wikipedia")
 
-def pressurefem(ex,ey,rad,wid,cl,visc,g_a,g_c,U):
+def pressurefem(ex,ey,rad,wid,cl,visc,g_a,g_c,U,sigma,delta):
     
     h=np.zeros([g_c.shape[0],g_c.shape[1]])
     dh=np.zeros([g_c.shape[0],g_c.shape[1]])
+    dhz=np.zeros([g_c.shape[0],g_c.shape[1]])
     for i in range(0,g_c.shape[0]):
         for j in range(0,g_c.shape[1]):
-            h[i,j]=hfilm(cl,ex,ey,g_c[i,j])
-            dh[i,j]=dhfilm(cl,ex,ey,g_c[i,j])/rad
+            h[i,j]=hfilm(cl,ex,ey,g_c[i,j],sigma,delta,g_a[i,j])
+            dh[i,j]=dhfilm(cl,ex,ey,g_c[i,j],sigma,delta,g_a[i,j])/rad
+            dhz[i,j]=dhfilmz(cl,ex,ey,g_c[i,j],sigma,delta,g_a[i,j])
+  
   
 
     p=np.zeros([g_c.shape[0],g_c.shape[1]])
@@ -38,9 +41,9 @@ def pressurefem(ex,ey,rad,wid,cl,visc,g_a,g_c,U):
               else:     
                  
                   A=(delx2-1.5*dh[i,j]/(delx*h[i,j]))/(2*sum2)
-                  B=(delz2)/(2*sum2)
+                  B=(delz2-1.5*dhz[i,j]/(delz*h[i,j]))/(2*sum2)
                   C=(delx2+1.5*dh[i,j]/(delx*h[i,j]))/(2*sum2)
-                  D=(delz2)/(2*sum2)
+                  D=(delz2+1.5*dhz[i,j]/(delz*h[i,j]))/(2*sum2)
                   E=-(3*visc*U*dh[i,j])/(sum2*h[i,j]**3)
                   
                   if i==0:
@@ -59,11 +62,15 @@ def pressurefem(ex,ey,rad,wid,cl,visc,g_a,g_c,U):
     pmax=np.max(np.max(p))    
     return(hmin,pmax,h,p)
    
-def hfilm(c,ex,ey,th):
-    return(c-ex*np.cos(th)-ey*np.sin(th))
+def hfilm(c,ex,ey,th,sigma,delta,z):
+    return(c-ex*np.cos(th)-ey*np.sin(th)+delta*z*np.cos(th)-sigma*z*np.sin(th))
 
-def dhfilm(c,ex,ey,th):
-    return(ex*np.sin(th)-ey*np.cos(th))
+def dhfilm(c,ex,ey,th,sigma,delta,z):
+    return(ex*np.sin(th)-ey*np.cos(th)-delta*z*np.sin(th)-sigma*z*np.cos(th))
+
+def dhfilmz(c,ex,ey,th,sigma,delta,z):
+    return(delta*np.cos(th)-sigma*np.sin(th))
+
 
 def loadintegral(p,delx,delz,g_c):
      px=np.zeros([g_c.shape[0],g_c.shape[1]])
@@ -119,10 +126,17 @@ if app_mode=='Journal Bearing':
     wy=st.number_input("Bearing Load in Y-Vertical (N)",0.0,10000.0)
     #st.write(wx,wy)
     
+    st.header("Bearing misalginments")
+    st.write("Maximum individual misalginment possible before contact is",2*cl/wid," radians")
+    delta=st.number_input("Horizontal Bearing Misalignment- X-axis (rad)",0.00000,2*cl/wid,format="%.10f")
+    sigma=st.number_input("Vertical Bearing Misalignment- Y-axis (rad)",0.00000,2*cl/wid,format="%.10f")
+    st.write("For more details on misalignment model. Please refer: https://asmedigitalcollection.asme.org/tribology/article-abstract/133/3/031703/475847/") 
+    
     st.header("Mesh details")
     na=st.number_input("Nodes in axial direction",5,30)
     nc=st.number_input("Nodes in circumferential direction",60,250)
     lim=st.number_input("Number of load iterations",40,500)
+    
     
     U=speed*rad
     #st.write(speed,rad,U)
@@ -153,13 +167,13 @@ if app_mode=='Journal Bearing':
 
         cou=cou+1
         
-        (hmin,pmax,h,p)=pressurefem(ex,ey,rad,wid,cl,visc,g_a,g_c,U)
+        (hmin,pmax,h,p)=pressurefem(ex,ey,rad,wid,cl,visc,g_a,g_c,U,sigma,delta)
         (fx,fy)=loadintegral(p,delx,delz,g_c)
         
-        (hmin,pmax,h,p)=pressurefem(ex+1e-11,ey,rad,wid,cl,visc,g_a,g_c,U)
+        (hmin,pmax,h,p)=pressurefem(ex+1e-11,ey,rad,wid,cl,visc,g_a,g_c,U,sigma,delta)
         (fxx,fyx)=loadintegral(p,delx,delz,g_c)
         
-        (hmin,pmax,h,p)=pressurefem(ex,ey+1e-11,rad,wid,cl,visc,g_a,g_c,U)
+        (hmin,pmax,h,p)=pressurefem(ex,ey+1e-11,rad,wid,cl,visc,g_a,g_c,U,sigma,delta)
         (fxy,fyy)=loadintegral(p,delx,delz,g_c)
         
         Kxx=(fxx-fx)/(1e-11)
@@ -189,8 +203,8 @@ if app_mode=='Journal Bearing':
         #st.write(ex/cl,ey/cl)
         status.write("Load Iteration :"+str(cou)+" Error in load-X (N) : "+str(c1)+" Error in Load-Y(N) : "+str(c2))
         
-        exc=ex/cl
-        eyc=ey/cl
+        exc=(ex-delta*wid*0.5)/cl
+        eyc=(ey+sigma*wid*0.5)/cl
         eff_ecc=np.sqrt(exc*exc+eyc*eyc) 
         
         if(cou==lim):
@@ -223,7 +237,7 @@ if app_mode=='Journal Bearing':
            
             
                           
-      (hmin,pmax,h,p)=pressurefem(ex,ey,rad,wid,cl,visc,g_a,g_c,U)
+      (hmin,pmax,h,p)=pressurefem(ex,ey,rad,wid,cl,visc,g_a,g_c,U,sigma,delta)
       (fx,fy)=loadintegral(p,delx,delz,g_c)
       #st.write(ex,ey)
       #st.write(fx,fy)
